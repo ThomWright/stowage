@@ -1,31 +1,8 @@
 use std::collections::BTreeSet;
-use std::path::PathBuf;
 use std::process::Command;
 
-use guppy::MetadataCommand;
-
+use super::fixtures::{fixture, fixture_manifest};
 use super::{EdgeKind, Graph, Platform, Resolution};
-
-fn fixture_manifest(name: &str) -> PathBuf {
-    [
-        env!("CARGO_MANIFEST_DIR"),
-        "tests",
-        "fixtures",
-        name,
-        "Cargo.toml",
-    ]
-    .iter()
-    .collect()
-}
-
-/// Loads a fixture workspace without touching the network or rewriting its committed lockfile.
-fn fixture(name: &str) -> Graph {
-    let mut command = MetadataCommand::new();
-    command
-        .manifest_path(fixture_manifest(name))
-        .other_options(["--locked".to_owned(), "--offline".to_owned()]);
-    Graph::from_command(command).expect("fixture loads")
-}
 
 fn resolution<'a>(graph: &'a Graph, source: &str) -> &'a Resolution {
     graph

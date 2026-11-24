@@ -18,6 +18,9 @@
 #[cfg(test)]
 mod tests;
 
+#[cfg(test)]
+pub(crate) mod fixtures;
+
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::Path;
 
