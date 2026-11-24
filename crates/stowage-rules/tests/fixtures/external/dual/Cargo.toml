@@ -1,0 +1,11 @@
+[package]
+name = "dual"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+sqlx-core = { path = "../sqlx-core", optional = true }
+
+[features]
+sqlx = ["dep:sqlx-core"]

@@ -1,0 +1,13 @@
+[package]
+name = "domain"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+shared = { path = "../shared" }
+dual = { path = "../../external/dual" }
+serde = { path = "../../external/serde", optional = true }
+
+[build-dependencies]
+dual = { path = "../../external/dual", features = ["sqlx"] }

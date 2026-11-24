@@ -1,0 +1,18 @@
+[package]
+name = "app"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+pm = { path = "../../external/pm" }
+helper = { path = "../../external/helper" }
+
+[build-dependencies]
+bdep = { path = "../../external/bdep" }
+
+[dev-dependencies]
+devdep = { path = "../../external/devdep" }
+
+[target.'cfg(windows)'.dependencies]
+winonly = { path = "../../external/winonly" }

@@ -39,3 +39,7 @@ print_stderr = "warn"
 
 let_underscore_must_use = "warn"
 unused_result_ok = "warn"
+
+[workspace.dependencies]
+guppy = "0.19.1"
+thiserror = "2.0.17"

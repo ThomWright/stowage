@@ -1,3 +1,15 @@
 allow-unwrap-in-tests = true
 allow-expect-in-tests = true
 allow-panic-in-tests = true
+
+# guppy stays inside the graph module, which allows these with `#![expect]`.
+disallowed-types = [
+    { path = "guppy::Error", reason = "use guppy only in the graph module" },
+    { path = "guppy::MetadataCommand", reason = "use guppy only in the graph module" },
+    { path = "guppy::PackageId", reason = "use guppy only in the graph module" },
+    { path = "guppy::graph::PackageGraph", reason = "use guppy only in the graph module" },
+    { path = "guppy::graph::PackageLink", reason = "use guppy only in the graph module" },
+    { path = "guppy::graph::PackageMetadata", reason = "use guppy only in the graph module" },
+    { path = "guppy::graph::cargo::CargoSet", reason = "use guppy only in the graph module" },
+    { path = "guppy::graph::feature::FeatureSet", reason = "use guppy only in the graph module" },
+]

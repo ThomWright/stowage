@@ -10,3 +10,5 @@ license.workspace = true
 workspace = true
 
 [dependencies]
+guppy.workspace = true
+thiserror.workspace = true
