@@ -8,23 +8,13 @@
     reason = "test helpers fail the test by panicking"
 )]
 
-use std::path::PathBuf;
+mod common;
+
 use std::sync::LazyLock;
 
 use stowage_rules::{Config, ConfigError, ConfigWarning, Graph};
 
-static GRAPH: LazyLock<Graph> = LazyLock::new(|| {
-    let manifest: PathBuf = [
-        env!("CARGO_MANIFEST_DIR"),
-        "tests",
-        "fixtures",
-        "features",
-        "Cargo.toml",
-    ]
-    .iter()
-    .collect();
-    Graph::load_from(manifest).expect("fixture loads")
-});
+static GRAPH: LazyLock<Graph> = LazyLock::new(|| common::fixture("features"));
 
 fn warnings(toml: &str) -> Vec<ConfigWarning> {
     Config::parse(toml, &GRAPH)
