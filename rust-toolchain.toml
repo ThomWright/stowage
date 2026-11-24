@@ -1,0 +1,4 @@
+# Pinned so that new clippy lints arrive in a deliberate toolchain bump, not in an unrelated change.
+[toolchain]
+channel = "1.100.0"
+components = ["rustfmt", "clippy"]

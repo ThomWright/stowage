@@ -1,0 +1,2 @@
+# Fixture lockfiles and snapshots are compared byte for byte, so line endings must not vary by platform.
+* text=auto eol=lf
