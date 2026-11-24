@@ -46,6 +46,10 @@ jobs:
         with:
           key: ${{ matrix.toolchain }}
       - run: cargo test --workspace --all-features --locked
+      # Tests load fixture workspaces without `--locked`, so a stale fixture lockfile would be
+      # rewritten silently instead of failing.
+      - name: Check fixture lockfiles are up to date
+        run: git diff --exit-code
 
   deny:
     name: cargo-deny

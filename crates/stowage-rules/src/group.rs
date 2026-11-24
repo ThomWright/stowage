@@ -1,26 +1,22 @@
 //! Groups: named selectors over the packages in a graph.
 
-#![cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "nothing outside the tests uses groups until rules exist"
-    )
-)]
-
 #[cfg(test)]
 mod tests;
 
 use std::collections::BTreeMap;
-use std::fmt;
 
-use serde::Deserialize;
-use serde::de::{self, Deserializer, MapAccess, SeqAccess, Visitor};
+use serde::{Deserialize, Deserializer};
 use wildmatch::WildMatch;
 
+use crate::config::ConfigError;
+use crate::de::{self, Expected};
 use crate::graph::Package;
 
-const BUILT_IN: [&str; 2] = ["workspace", "external"];
+/// The names of the built-in groups, which can't be redefined.
+pub(crate) const BUILT_IN: [&str; 2] = [WORKSPACE, "external"];
+
+/// The built-in group of every workspace member.
+const WORKSPACE: &str = "workspace";
 
 /// A group as written in the config's `[groups]` table, such as
 /// `harnesses = { name = "*-tests", workspace = true }`.
@@ -33,14 +29,23 @@ const BUILT_IN: [&str; 2] = ["workspace", "external"];
     expecting = "a table of conditions, such as `{ name = \"*-tests\" }`"
 )]
 pub(crate) struct GroupDef {
-    name: Option<NameList>,
+    #[serde(default, deserialize_with = "names")]
+    name: Option<Vec<String>>,
     workspace: Option<bool>,
     bin: Option<bool>,
 }
 
-/// The value of a group's `name` key: one pattern, or a list of them.
-#[derive(Debug)]
-struct NameList(Vec<String>);
+fn names<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<Vec<String>>, D::Error> {
+    de::strings(
+        deserializer,
+        Expected {
+            item: "a glob string",
+            value: "a glob string or a list of them",
+            table: "table matchers like `{ regex = \"...\" }` aren't supported; use a glob string",
+        },
+    )
+    .map(Some)
+}
 
 /// A named selector over packages. A package is in the group if it meets all of the group's
 /// conditions.
@@ -60,52 +65,25 @@ pub(crate) struct Group {
 /// case, and treating `-` and `_` as the same. So `serde_json` matches `serde-json`, and
 /// `*-tests` matches `orders_tests`.
 #[derive(Debug)]
-struct NamePattern(WildMatch);
+struct NamePattern {
+    /// The pattern as written.
+    pattern: String,
+    glob: WildMatch,
+}
 
 /// The groups defined in a config's `[groups]` table, plus the built-in groups: `workspace`
 /// (every workspace member) and `external` (every other package).
 #[derive(Debug)]
 pub(crate) struct Groups(BTreeMap<String, Group>);
 
-/// A group definition that has the right shape but doesn't make sense.
-#[derive(Debug, PartialEq, Eq, thiserror::Error)]
-pub(crate) enum GroupError {
-    #[error("group name `{group}` may only contain letters, digits, `-` and `_`")]
-    InvalidName { group: String },
-
-    #[error("`{group}` is a built-in group and can't be redefined")]
-    ReservedName { group: String },
-
-    #[error(
-        "group `{group}`: name pattern `{pattern}` contains `{character}`; patterns may only contain letters, digits, `-`, `_`, `*` and `?`"
-    )]
-    InvalidPattern {
-        group: String,
-        pattern: String,
-        character: char,
-    },
-
-    #[error("group `{group}`: name pattern is empty")]
-    EmptyPattern { group: String },
-
-    #[error("group `{group}`: `name` is an empty list, so the group would match nothing")]
-    EmptyNameList { group: String },
-
-    #[error(
-        "group `{group}` has no conditions, so it would match every package; use the built-in `workspace` or `external` group instead"
-    )]
-    NoConditions { group: String },
-}
-
 impl Groups {
     /// Validates the definitions from a `[groups]` table, keyed by group name.
     ///
-    /// # Errors
-    ///
-    /// Returns every problem found, ordered by group name.
-    pub(crate) fn new(defs: BTreeMap<String, GroupDef>) -> Result<Self, Vec<GroupError>> {
+    /// Returns the valid groups, plus an error for each problem in the others, ordered by group
+    /// name.
+    pub(crate) fn new(defs: BTreeMap<String, GroupDef>) -> (Self, Vec<ConfigError>) {
         let mut groups = BTreeMap::from([
-            (BUILT_IN[0].to_owned(), Group::members(true)),
+            (WORKSPACE.to_owned(), Group::members(true)),
             (BUILT_IN[1].to_owned(), Group::members(false)),
         ]);
         let mut errors = Vec::new();
@@ -117,15 +95,20 @@ impl Groups {
                 Err(mut group_errors) => errors.append(&mut group_errors),
             }
         }
-        if errors.is_empty() {
-            Ok(Self(groups))
-        } else {
-            Err(errors)
-        }
+        (Self(groups), errors)
     }
 
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "nothing looks groups up until the checker exists")
+    )]
     pub(crate) fn get(&self, name: &str) -> Option<&Group> {
         self.0.get(name)
+    }
+
+    /// Every group, ordered by name.
+    pub(crate) fn iter(&self) -> impl Iterator<Item = (&str, &Group)> {
+        self.0.iter().map(|(name, group)| (name.as_str(), group))
     }
 }
 
@@ -139,17 +122,13 @@ impl Group {
         }
     }
 
-    fn new(name: &str, def: GroupDef) -> Result<Self, Vec<GroupError>> {
+    fn new(name: &str, def: GroupDef) -> Result<Self, Vec<ConfigError>> {
         let group = || name.to_owned();
-        if name.is_empty()
-            || !name
-                .chars()
-                .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
-        {
-            return Err(vec![GroupError::InvalidName { group: group() }]);
+        if !is_valid_name(name) {
+            return Err(vec![ConfigError::InvalidGroupName { group: group() }]);
         }
         if BUILT_IN.contains(&name) {
-            return Err(vec![GroupError::ReservedName { group: group() }]);
+            return Err(vec![ConfigError::ReservedGroupName { group: group() }]);
         }
         let GroupDef {
             name: names,
@@ -157,12 +136,12 @@ impl Group {
             bin,
         } = def;
         if names.is_none() && workspace.is_none() && bin.is_none() {
-            return Err(vec![GroupError::NoConditions { group: group() }]);
+            return Err(vec![ConfigError::GroupHasNoConditions { group: group() }]);
         }
         let names = names
-            .map(|NameList(patterns)| {
+            .map(|patterns| {
                 if patterns.is_empty() {
-                    return Err(vec![GroupError::EmptyNameList { group: group() }]);
+                    return Err(vec![ConfigError::EmptyNameList { group: group() }]);
                 }
                 let mut parsed = Vec::new();
                 let mut errors = Vec::new();
@@ -188,89 +167,54 @@ impl Group {
 
     /// Whether `package` meets all of this group's conditions.
     pub(crate) fn matches(&self, package: &Package) -> bool {
-        self.names.as_ref().is_none_or(|names| {
-            let name = normalise(&package.name);
-            names.iter().any(|pattern| pattern.0.matches(&name))
-        }) && self
-            .workspace
+        self.names
+            .as_ref()
+            .is_none_or(|names| names.iter().any(|pattern| pattern.matches(package)))
+            && self.matches_except_names(package)
+    }
+
+    fn matches_except_names(&self, package: &Package) -> bool {
+        self.workspace
             .is_none_or(|workspace| workspace == package.workspace_member)
             && self.bin.is_none_or(|bin| bin == package.has_bin)
     }
-}
 
-// Hand-written visitors rather than an untagged enum, so that a table gets an error saying table
-// matchers aren't supported, instead of "data did not match any variant of untagged enum".
+    /// The group's name patterns, as written, that match none of `packages` that meet the group's
+    /// other conditions. Such a pattern has no effect on the group.
+    pub(crate) fn unmatched_patterns(&self, packages: &[&Package]) -> Vec<&str> {
+        self.names
+            .iter()
+            .flatten()
+            .filter(|pattern| {
+                !packages
+                    .iter()
+                    .any(|package| pattern.matches(package) && self.matches_except_names(package))
+            })
+            .map(|pattern| pattern.pattern.as_str())
+            .collect()
+    }
 
-impl<'de> Deserialize<'de> for NameList {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        struct NameListVisitor;
-
-        impl<'de> Visitor<'de> for NameListVisitor {
-            type Value = NameList;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-                formatter.write_str("a glob string or a list of them")
-            }
-
-            fn visit_str<E: de::Error>(self, pattern: &str) -> Result<NameList, E> {
-                Ok(NameList(vec![pattern.to_owned()]))
-            }
-
-            fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<NameList, A::Error> {
-                let mut patterns = Vec::new();
-                while let Some(ListedName(pattern)) = seq.next_element()? {
-                    patterns.push(pattern);
-                }
-                Ok(NameList(patterns))
-            }
-
-            fn visit_map<A: MapAccess<'de>>(self, _map: A) -> Result<NameList, A::Error> {
-                Err(unsupported_matcher())
-            }
-        }
-
-        deserializer.deserialize_any(NameListVisitor)
+    /// Whether every package in the group is a workspace member.
+    pub(crate) fn selects_members(&self) -> bool {
+        self.workspace == Some(true)
     }
 }
 
-/// One pattern inside a `name` list.
-struct ListedName(String);
-
-impl<'de> Deserialize<'de> for ListedName {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        struct ListedNameVisitor;
-
-        impl<'de> Visitor<'de> for ListedNameVisitor {
-            type Value = ListedName;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-                formatter.write_str("a glob string")
-            }
-
-            fn visit_str<E: de::Error>(self, pattern: &str) -> Result<ListedName, E> {
-                Ok(ListedName(pattern.to_owned()))
-            }
-
-            fn visit_map<A: MapAccess<'de>>(self, _map: A) -> Result<ListedName, A::Error> {
-                Err(unsupported_matcher())
-            }
-        }
-
-        deserializer.deserialize_any(ListedNameVisitor)
-    }
-}
-
-fn unsupported_matcher<E: de::Error>() -> E {
-    E::custom("table matchers like `{ regex = \"...\" }` aren't supported; use a glob string")
+/// Whether `name` is allowed as the name of a group or rule: letters, digits, `-` and `_`.
+pub(crate) fn is_valid_name(name: &str) -> bool {
+    !name.is_empty()
+        && name
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
 }
 
 impl NamePattern {
     /// Rejects characters that can't appear in a crate name, so that syntax such as `[abc]` or
     /// `{a,b}` fails loudly instead of silently matching nothing. It also means adding that syntax
     /// later can't change what an existing pattern matches.
-    fn parse(group: &str, pattern: &str) -> Result<Self, GroupError> {
+    fn parse(group: &str, pattern: &str) -> Result<Self, ConfigError> {
         if pattern.is_empty() {
-            return Err(GroupError::EmptyPattern {
+            return Err(ConfigError::EmptyPattern {
                 group: group.to_owned(),
             });
         }
@@ -278,13 +222,20 @@ impl NamePattern {
             .chars()
             .find(|&c| !(c.is_alphanumeric() || matches!(c, '-' | '_' | '*' | '?')))
         {
-            return Err(GroupError::InvalidPattern {
+            return Err(ConfigError::InvalidPattern {
                 group: group.to_owned(),
                 pattern: pattern.to_owned(),
                 character,
             });
         }
-        Ok(Self(WildMatch::new(&normalise(pattern))))
+        Ok(Self {
+            pattern: pattern.to_owned(),
+            glob: WildMatch::new(&normalise(pattern)),
+        })
+    }
+
+    fn matches(&self, package: &Package) -> bool {
+        self.glob.matches(&normalise(&package.name))
     }
 }
 
