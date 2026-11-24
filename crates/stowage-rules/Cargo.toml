@@ -11,4 +11,10 @@ workspace = true
 
 [dependencies]
 guppy.workspace = true
+serde.workspace = true
 thiserror.workspace = true
+toml.workspace = true
+wildmatch.workspace = true
+
+[dev-dependencies]
+insta.workspace = true

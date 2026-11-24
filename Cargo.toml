@@ -42,4 +42,8 @@ unused_result_ok = "warn"
 
 [workspace.dependencies]
 guppy = "0.19.1"
+insta = "1.49.0"
+serde = { version = "1.0.229", features = ["derive"] }
 thiserror = "2.0.17"
+toml = "1.2.2"
+wildmatch = "2.7.0"

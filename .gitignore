@@ -1,2 +1,6 @@
 /target
 /.local
+
+# insta writes these when a snapshot doesn't match; review them with `cargo insta review`.
+*.pending-snap
+*.snap.new

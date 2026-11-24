@@ -4,5 +4,6 @@
 //! workspace's dependency graph, from a `stowage.toml` config, inside `cargo test`.
 
 mod graph;
+mod group;
 
 pub use graph::{Graph, LoadError};
