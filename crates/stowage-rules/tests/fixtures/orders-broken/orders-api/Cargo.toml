@@ -1,0 +1,12 @@
+[package]
+name = "orders-api"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+orders-domain = { path = "../orders-domain" }
+orders-db = { path = "../orders-db" }
+orders-ids = { path = "../orders-ids" }
+async-graphql = { path = "../../external/async-graphql" }
+orders-worker = { path = "../orders-worker" }

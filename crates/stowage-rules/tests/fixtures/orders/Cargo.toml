@@ -1,0 +1,3 @@
+[workspace]
+resolver = "2"
+members = ["orders-domain", "orders-ids", "orders-db", "orders-api", "orders-worker", "orders-tests"]

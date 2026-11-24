@@ -6,6 +6,7 @@ use std::ops::Range;
 
 use serde::Deserialize;
 
+use crate::check::{self, Report};
 use crate::graph::Graph;
 use crate::group::{BUILT_IN, GroupDef, Groups};
 use crate::rule::{Rule, RuleDef};
@@ -13,9 +14,7 @@ use crate::rule::{Rule, RuleDef};
 /// The groups and rules of a config, validated against a workspace.
 #[derive(Debug)]
 pub struct Config {
-    #[expect(dead_code, reason = "nothing reads groups until the checker exists")]
     groups: Groups,
-    #[expect(dead_code, reason = "nothing reads rules until the checker exists")]
     rules: Vec<Rule>,
     warnings: Vec<ConfigWarning>,
 }
@@ -249,6 +248,17 @@ impl Config {
     /// Things in the config that are probably mistakes.
     pub fn warnings(&self) -> &[ConfigWarning] {
         &self.warnings
+    }
+
+    /// Checks every rule against `graph`, which should be the graph the config was validated
+    /// against.
+    ///
+    /// Each rule is checked from each of its source crates in turn, with all of the source's own
+    /// features on, as described on [`Graph`].
+    ///
+    /// Rules with `reach = "transitive"` aren't checked yet.
+    pub fn check(&self, graph: &Graph) -> Report {
+        check::check(&self.groups, &self.rules, &self.warnings, graph)
     }
 }
 

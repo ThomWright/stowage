@@ -1,0 +1,10 @@
+[package]
+name = "orders-db"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+orders-domain = { path = "../orders-domain" }
+sqlx-core = { path = "../../external/sqlx-core" }
+serde = { path = "../../external/serde" }

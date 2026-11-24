@@ -1,0 +1,9 @@
+[package]
+name = "orders-domain"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+orders-ids = { path = "../orders-ids" }
+serde = { path = "../../external/serde", optional = true }

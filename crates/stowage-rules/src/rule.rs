@@ -1,10 +1,5 @@
 //! Forbid rules: dependencies that crates in one set of groups may not have on crates in another.
 
-#![cfg_attr(
-    not(test),
-    expect(dead_code, reason = "nothing reads rules until the checker exists")
-)]
-
 #[cfg(test)]
 mod tests;
 
@@ -77,9 +72,11 @@ pub(crate) enum Reach {
 }
 
 /// How a target is built for the source crate, judged by the path from one to the other.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize)]
+///
+/// Ordered from most to least serious.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub(crate) enum PathKind {
+pub enum PathKind {
     /// Every edge on the path is a normal dependency, so the target is linked into the source
     /// crate.
     Normal,

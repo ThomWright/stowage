@@ -98,10 +98,6 @@ impl Groups {
         (Self(groups), errors)
     }
 
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "nothing looks groups up until the checker exists")
-    )]
     pub(crate) fn get(&self, name: &str) -> Option<&Group> {
         self.0.get(name)
     }

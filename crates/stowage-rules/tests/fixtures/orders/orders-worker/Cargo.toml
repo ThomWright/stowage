@@ -1,0 +1,9 @@
+[package]
+name = "orders-worker"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+orders-domain = { path = "../orders-domain" }
+orders-db = { path = "../orders-db" }
