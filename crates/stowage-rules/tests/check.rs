@@ -19,50 +19,8 @@ static ORDERS_BROKEN: LazyLock<Graph> = LazyLock::new(|| common::fixture("orders
 static FEATURES: LazyLock<Graph> = LazyLock::new(|| common::fixture("features"));
 static VERSIONS: LazyLock<Graph> = LazyLock::new(|| common::fixture("versions"));
 
-/// The design doc's worked example.
-const WORKED_EXAMPLE: &str = r#"
-    [groups]
-    domain = { name = "orders-domain", workspace = true }
-    entrypoints = { workspace = true, bin = true }
-    test-harnesses = { name = "*-tests", workspace = true }
-    graphql = { name = "async-graphql" }
-    sql = { name = ["sqlx-core", "tokio-postgres"] }
-    grpc = { name = ["tonic", "prost"] }
-    http = { name = ["hyper", "actix-http"] }
-    amqp = { name = "lapin" }
-    serialisation = { name = ["serde", "serde_json"] }
-
-    [[forbid]]
-    name = "domain-is-the-bottom-layer"
-    from = "domain"
-    to = "workspace"
-    reason = "Every other crate builds on the domain."
-
-    [[forbid]]
-    name = "only-test-harnesses-depend-on-entrypoints"
-    from = { not = "test-harnesses" }
-    to = "entrypoints"
-    reason = "Code another crate needs belongs in a library."
-
-    [[forbid]]
-    name = "nothing-depends-on-test-harnesses"
-    from = "workspace"
-    to = "test-harnesses"
-    reason = "Test harnesses bring in mocks and fixtures, which must never end up in a deployable."
-
-    [[forbid]]
-    name = "domain-is-independent-of-infrastructure"
-    from = "domain"
-    to = ["graphql", "sql", "grpc", "http", "amqp"]
-    reach = "transitive"
-    reason = "Keeping transport and storage out of the domain means its rules can be tested without infrastructure."
-
-    [[forbid]]
-    name = "domain-does-not-serialise"
-    from = "domain"
-    to = "serialisation"
-    reason = "A serialised form is a contract owned by another crate."
-"#;
+/// The design doc's worked example, which `orders` follows and `orders-broken` breaks.
+const WORKED_EXAMPLE: &str = include_str!("fixtures/orders/stowage.toml");
 
 /// A violation as (rule, source, target, target group, path kind).
 type Found = (String, String, String, String, PathKind);

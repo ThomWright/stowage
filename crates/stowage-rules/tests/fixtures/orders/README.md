@@ -21,3 +21,5 @@ orders-worker ──┬──► orders-domain
 - Serialisation (`serde`) and SQL (`sqlx-core`, through `db-pool`) are reached only through `orders-db`, so the domain doesn't reach infrastructure, even transitively.
 
 `orders-api` and `orders-worker` have a lib target as well as a bin, because Cargo ignores a dependency on a crate with no lib target.
+
+Its `stowage.toml` is the worked example.

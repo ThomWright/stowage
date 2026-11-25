@@ -11,3 +11,5 @@ The `orders` workspace with one deliberate violation of each rule in the design 
 | Domain does not serialise | `orders-domain ┄┄[serde]┄┄► serde` |
 
 The `serde` dependency is optional, behind `orders-domain`'s own `serde` feature, which nothing turns on. It still counts, because all of the source crate's own features are on.
+
+Its `stowage.toml` is the worked example, the same as `orders`.

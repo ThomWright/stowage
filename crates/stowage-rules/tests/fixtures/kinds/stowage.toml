@@ -1,0 +1,4 @@
+# No rules, so checking this workspace passes with a warning that it checks nothing.
+
+[groups]
+app = { name = "app", workspace = true }

@@ -22,7 +22,7 @@ mod tests;
 pub(crate) mod fixtures;
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use guppy::MetadataCommand;
 use guppy::graph::cargo::{BuildPlatform, CargoOptions, CargoResolverVersion, CargoSet};
@@ -45,6 +45,8 @@ use guppy::platform::PlatformSpec;
 /// 2021. A workspace that still uses version 1 can see differences.
 #[derive(Debug)]
 pub struct Graph {
+    /// The directory holding the workspace's root `Cargo.toml`.
+    workspace_root: PathBuf,
     /// Sorted by name, then version.
     packages: Vec<Package>,
     /// One for each workspace member.
@@ -144,6 +146,12 @@ impl Graph {
         Self::from_command(command)
     }
 
+    /// Loads the graph of the workspace containing the current directory, by running
+    /// `cargo metadata` in it.
+    pub(crate) fn load_current_dir() -> Result<Self, LoadError> {
+        Self::from_command(MetadataCommand::new())
+    }
+
     fn from_command(mut command: MetadataCommand) -> Result<Self, LoadError> {
         let graph = PackageGraph::from_command(&mut command).map_err(LoadError)?;
         Self::from_package_graph(&graph).map_err(LoadError)
@@ -176,9 +184,14 @@ impl Graph {
             .collect::<Result<_, _>>()?;
 
         Ok(Self {
+            workspace_root: graph.workspace().root().as_std_path().to_owned(),
             packages,
             resolutions,
         })
+    }
+
+    pub(crate) fn workspace_root(&self) -> &Path {
+        &self.workspace_root
     }
 
     pub(crate) fn packages(&self) -> &[Package] {

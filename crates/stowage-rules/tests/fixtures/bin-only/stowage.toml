@@ -1,0 +1,10 @@
+# Invalid in three ways, so checking this workspace fails with every error.
+
+[groups]
+tools = { name = "tool", workspace = true, bin = true }
+
+[[forbid]]
+name = "no tools"
+from = "workspace"
+to = "tool"
+reason = ""
