@@ -1,0 +1,9 @@
+[package]
+name = "app"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+codec = { path = "../../external/codec-1" }
+codec-compat = { path = "../../external/codec-compat" }

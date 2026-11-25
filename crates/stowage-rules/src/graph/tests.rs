@@ -237,7 +237,7 @@ fn cargo_tree(fixture_name: &str, member: &str) -> BTreeSet<String> {
 /// bin-only crates (which `cargo tree` lists but Cargo ignores).
 #[test]
 fn resolution_matches_cargo_tree() {
-    for fixture_name in ["features", "kinds", "orders", "orders-broken"] {
+    for fixture_name in ["features", "kinds", "orders", "orders-broken", "versions"] {
         let graph = fixture(fixture_name);
         for resolution in graph.resolutions() {
             let member = &graph.package(resolution.source).name;

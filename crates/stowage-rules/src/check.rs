@@ -5,6 +5,7 @@ mod tests;
 
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::fmt;
 
 use crate::config::ConfigWarning;
 use crate::graph::{Edge, EdgeKind, Graph, Node, Package, PackageId, Platform, Resolution};
@@ -12,10 +13,17 @@ use crate::group::Groups;
 use crate::rule::{PathKind, Reach, Rule, Sources};
 
 /// The result of checking a config against a workspace.
+///
+/// Its [`Display`](fmt::Display) form is the report for people to read: the config's warnings,
+/// then each violation with its path and reason, then a count of the violations. A report with
+/// no violations shows only its warnings, and one with neither is empty.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Report {
     violations: Vec<Violation>,
     warnings: Vec<ConfigWarning>,
+    /// Crate names that more than one package in the graph has, so the report shows their
+    /// versions to tell them apart.
+    ambiguous_names: BTreeSet<String>,
 }
 
 /// A dependency forbidden by a rule: a source crate depending on a target crate.
@@ -24,9 +32,19 @@ pub struct Violation {
     rule: String,
     reason: String,
     source: String,
+    source_version: String,
     target: String,
+    target_version: String,
     target_group: String,
     kind: PathKind,
+    path: Vec<Hop>,
+}
+
+/// A crate on the path of a [`Violation`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Hop {
+    name: String,
+    version: String,
 }
 
 impl Report {
@@ -74,6 +92,91 @@ impl Violation {
     pub fn kind(&self) -> PathKind {
         self.kind
     }
+
+    /// The crates on a shortest path from the source to the target, in order, starting with one
+    /// of the source's own dependencies and ending with the target. The source isn't included, so
+    /// a direct dependency's path is just the target.
+    pub fn path(&self) -> &[Hop] {
+        &self.path
+    }
+}
+
+impl Hop {
+    /// The crate's name.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// The crate's version.
+    pub fn version(&self) -> &str {
+        &self.version
+    }
+}
+
+impl fmt::Display for Report {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Blocks are separated by a blank line, with no newline after the last.
+        let mut separator = "";
+        if !self.warnings.is_empty() {
+            for warning in &self.warnings {
+                write!(f, "{separator}warning: {warning}")?;
+                separator = "\n";
+            }
+            separator = "\n\n";
+        }
+        for violation in &self.violations {
+            f.write_str(separator)?;
+            self.fmt_violation(violation, f)?;
+            separator = "\n\n";
+        }
+        if !self.violations.is_empty() {
+            let rules: BTreeSet<&str> = self.violations.iter().map(Violation::rule).collect();
+            write!(
+                f,
+                "{separator}{} of {}",
+                count(self.violations.len(), "violation"),
+                count(rules.len(), "rule"),
+            )?;
+        }
+        Ok(())
+    }
+}
+
+impl Report {
+    fn fmt_violation(&self, violation: &Violation, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let source = self.crate_name(&violation.source, &violation.source_version);
+        let target = self.crate_name(&violation.target, &violation.target_version);
+        writeln!(
+            f,
+            "error[{}]: {source} depends on {target} ({})",
+            violation.rule, violation.target_group
+        )?;
+        write!(f, "  {source}")?;
+        for hop in &violation.path {
+            write!(f, " → {}", self.crate_name(&hop.name, &hop.version))?;
+        }
+        match violation.kind {
+            PathKind::Normal => {}
+            PathKind::Build => f.write_str(" (build)")?,
+            PathKind::Dev => f.write_str(" (dev)")?,
+        }
+        write!(f, "\n  reason: {}", violation.reason)
+    }
+
+    /// A crate's name, with its version if the graph has more than one version of it.
+    fn crate_name(&self, name: &str, version: &str) -> String {
+        if self.ambiguous_names.contains(name) {
+            format!("{name}@{version}")
+        } else {
+            name.to_owned()
+        }
+    }
+}
+
+/// `n` of `noun`, such as "1 rule" or "2 rules".
+fn count(n: usize, noun: &str) -> String {
+    let plural = if n == 1 { "" } else { "s" };
+    format!("{n} {noun}{plural}")
 }
 
 /// A path of dependencies from a source crate to a target.
@@ -188,6 +291,7 @@ pub(crate) fn check(
     Report {
         violations,
         warnings: warnings.to_vec(),
+        ambiguous_names: ambiguous_names(graph),
     }
 }
 
@@ -217,17 +321,42 @@ fn violations(groups: &Groups, rule: &Rule, graph: &Graph) -> Vec<Violation> {
             let Some(group) = group_of(target) else {
                 continue;
             };
+            let target_package = graph.package(target);
             violations.push(Violation {
                 rule: rule.name.clone(),
                 reason: rule.reason.clone(),
                 source: source.name.clone(),
-                target: graph.package(target).name.clone(),
+                source_version: source.version.clone(),
+                target: target_package.name.clone(),
+                target_version: target_package.version.clone(),
                 target_group: group.to_owned(),
                 kind: path.kind,
+                path: path
+                    .edges
+                    .iter()
+                    .map(|edge| {
+                        let package = graph.package(edge.to.package);
+                        Hop {
+                            name: package.name.clone(),
+                            version: package.version.clone(),
+                        }
+                    })
+                    .collect(),
             });
         }
     }
     violations
+}
+
+/// The crate names that more than one package in `graph` has.
+fn ambiguous_names(graph: &Graph) -> BTreeSet<String> {
+    let mut seen = BTreeSet::new();
+    graph
+        .packages()
+        .iter()
+        .filter(|package| !seen.insert(package.name.as_str()))
+        .map(|package| package.name.clone())
+        .collect()
 }
 
 /// Whether the workspace member `package` is one of the rule's source crates, as described on
