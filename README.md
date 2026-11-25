@@ -16,6 +16,8 @@ cargo test --workspace --locked
 
 They need no network access: the tests load small fixture workspaces, described in [`crates/stowage-rules/tests/fixtures`](crates/stowage-rules/tests/fixtures/README.md).
 
+The search for dependency paths has [proptest](https://proptest-rs.github.io/proptest/) property tests. When one fails, proptest saves the failing case under `proptest-regressions/` and replays it on every later run, so commit that file with the fix. Set `PROPTEST_CASES` (default 256) to run more cases.
+
 Error messages are checked with [insta](https://insta.rs) inline snapshots. When a message changes on purpose, review and accept the new snapshots with `cargo insta review`, from [cargo-insta](https://insta.rs/docs/cli/).
 
 ## License

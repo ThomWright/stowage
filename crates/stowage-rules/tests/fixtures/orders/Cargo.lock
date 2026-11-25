@@ -7,6 +7,13 @@ name = "async-graphql"
 version = "0.1.0"
 
 [[package]]
+name = "db-pool"
+version = "0.1.0"
+dependencies = [
+ "sqlx-core",
+]
+
+[[package]]
 name = "orders-api"
 version = "0.1.0"
 dependencies = [
@@ -20,9 +27,9 @@ dependencies = [
 name = "orders-db"
 version = "0.1.0"
 dependencies = [
+ "db-pool",
  "orders-domain",
  "serde",
- "sqlx-core",
 ]
 
 [[package]]

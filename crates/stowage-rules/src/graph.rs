@@ -55,6 +55,14 @@ pub struct Graph {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) struct PackageId(usize);
 
+#[cfg(test)]
+impl PackageId {
+    /// The package at `index` in a graph's packages, for building resolutions by hand in tests.
+    pub(crate) fn from_index(index: usize) -> Self {
+        Self(index)
+    }
+}
+
 /// A package in the graph: a workspace member or an external crate.
 #[derive(Debug)]
 pub(crate) struct Package {

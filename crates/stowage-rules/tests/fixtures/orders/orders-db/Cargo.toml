@@ -6,5 +6,5 @@ publish = false
 
 [dependencies]
 orders-domain = { path = "../orders-domain" }
-sqlx-core = { path = "../../external/sqlx-core" }
+db-pool = { path = "../../external/db-pool" }
 serde = { path = "../../external/serde" }

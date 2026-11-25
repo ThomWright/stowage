@@ -1,4 +1,4 @@
-//! Checking direct rules against fixture workspaces. `orders` and `orders-broken` are the design
+//! Checking rules against fixture workspaces. `orders` and `orders-broken` are the design
 //! doc's worked example; `features` covers how a source crate's features and build dependencies
 //! count. Each fixture's README has a diagram.
 
@@ -17,12 +17,17 @@ static ORDERS: LazyLock<Graph> = LazyLock::new(|| common::fixture("orders"));
 static ORDERS_BROKEN: LazyLock<Graph> = LazyLock::new(|| common::fixture("orders-broken"));
 static FEATURES: LazyLock<Graph> = LazyLock::new(|| common::fixture("features"));
 
-/// The worked example's direct rules (all but `domain-is-independent-of-infrastructure`).
+/// The design doc's worked example.
 const WORKED_EXAMPLE: &str = r#"
     [groups]
     domain = { name = "orders-domain", workspace = true }
     entrypoints = { workspace = true, bin = true }
     test-harnesses = { name = "*-tests", workspace = true }
+    graphql = { name = "async-graphql" }
+    sql = { name = ["sqlx-core", "tokio-postgres"] }
+    grpc = { name = ["tonic", "prost"] }
+    http = { name = ["hyper", "actix-http"] }
+    amqp = { name = "lapin" }
     serialisation = { name = ["serde", "serde_json"] }
 
     [[forbid]]
@@ -42,6 +47,13 @@ const WORKED_EXAMPLE: &str = r#"
     from = "workspace"
     to = "test-harnesses"
     reason = "Test harnesses must never reach a deployable."
+
+    [[forbid]]
+    name = "domain-is-independent-of-infrastructure"
+    from = "domain"
+    to = ["graphql", "sql", "grpc", "http", "amqp"]
+    reach = "transitive"
+    reason = "Keeping transport and storage out of the domain means its rules can be tested without infrastructure."
 
     [[forbid]]
     name = "domain-does-not-serialise"
@@ -90,7 +102,7 @@ fn worked_example_passes_on_a_workspace_that_follows_it() {
 
 /// Violations are ordered by rule (as written), then source, then target.
 #[test]
-fn worked_example_catches_each_direct_violation() {
+fn worked_example_catches_each_violation() {
     assert_eq!(
         violations(WORKED_EXAMPLE, &ORDERS_BROKEN),
         [
@@ -114,6 +126,14 @@ fn worked_example_catches_each_direct_violation() {
                 "orders-tests",
                 "test-harnesses",
                 PathKind::Dev
+            ),
+            // Through `db-pool`, which is not itself in any of the rule's groups.
+            found(
+                "domain-is-independent-of-infrastructure",
+                "orders-domain",
+                "sqlx-core",
+                "sql",
+                PathKind::Normal
             ),
             // Only `orders-domain`'s own `serde` feature turns this dependency on.
             found(
@@ -256,4 +276,68 @@ fn violations_are_ordered_by_source_then_target() {
             found("r", "shared", "sqlx-core", "external", PathKind::Normal),
         ]
     );
+}
+
+#[test]
+fn a_direct_rule_ignores_dependencies_of_dependencies() {
+    // `orders-domain` reaches `sqlx-core` only through `db-pool`.
+    let toml = r#"
+        [groups]
+        domain = { name = "orders-domain", workspace = true }
+        sql = { name = "sqlx-core" }
+
+        [[forbid]]
+        name = "r"
+        from = "domain"
+        to = "sql"
+        reason = "r"
+    "#;
+    assert_eq!(violations(toml, &ORDERS_BROKEN), []);
+}
+
+#[test]
+fn a_transitive_rule_only_checks_paths_from_its_sources() {
+    // `orders-api` and `orders-worker` reach `sqlx-core` through `orders-db`, but only the domain
+    // is a source.
+    let toml = r#"
+        [groups]
+        domain = { name = "orders-domain", workspace = true }
+        sql = { name = "sqlx-core" }
+
+        [[forbid]]
+        name = "r"
+        from = "domain"
+        to = "sql"
+        reach = "transitive"
+        reason = "r"
+    "#;
+    assert_eq!(violations(toml, &ORDERS), []);
+}
+
+#[test]
+fn a_transitive_path_through_a_build_dependency_is_a_build_path() {
+    // `domain` reaches `sqlx-core` only through `dual`'s `sqlx` feature, which its build
+    // dependency on `dual` turns on, so only on the host.
+    let rule = |kinds: &str| {
+        format!(
+            r#"
+            [groups]
+            domain = {{ name = "domain", workspace = true }}
+            sql = {{ name = "sqlx-core" }}
+
+            [[forbid]]
+            name = "r"
+            from = "domain"
+            to = "sql"
+            reach = "transitive"
+            kinds = {kinds}
+            reason = "r"
+            "#
+        )
+    };
+    assert_eq!(
+        violations(&rule(r#"["normal", "build", "dev"]"#), &FEATURES),
+        [found("r", "domain", "sqlx-core", "sql", PathKind::Build)]
+    );
+    assert_eq!(violations(&rule(r#"["normal"]"#), &FEATURES), []);
 }

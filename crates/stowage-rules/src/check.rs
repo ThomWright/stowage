@@ -1,9 +1,13 @@
 //! Checking a config's rules against a workspace's dependency graph.
 
-use std::collections::BTreeMap;
+#[cfg(test)]
+mod tests;
+
+use std::collections::btree_map::Entry;
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use crate::config::ConfigWarning;
-use crate::graph::{EdgeKind, Graph, Package, PackageId};
+use crate::graph::{Edge, EdgeKind, Graph, Node, Package, PackageId, Platform, Resolution};
 use crate::group::Groups;
 use crate::rule::{PathKind, Reach, Rule, Sources};
 
@@ -72,6 +76,104 @@ impl Violation {
     }
 }
 
+/// A path of dependencies from a source crate to a target.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Path {
+    /// In order from the source crate. Never empty.
+    pub(crate) edges: Vec<Edge>,
+    /// The kind of the path's least serious edge: any build edge makes it a build path, and a dev
+    /// first edge makes it a dev path.
+    pub(crate) kind: PathKind,
+}
+
+/// The path to report for each target that the source crate of `resolution` reaches.
+///
+/// The search starts from the source crate on the target platform, and follows its own
+/// dependencies for a direct reach, or dependencies through any number of crates for a transitive
+/// one.
+///
+/// - Dev edges are followed only on the first hop.
+/// - Each path stops at the first target it reaches, so a target's own dependencies aren't
+///   searched.
+/// - The source crate is never a target, even if `is_target` says it is.
+/// - Only paths whose kind is in `kinds` are reported. For each target, the path reported is the
+///   shortest of the most serious kind. Of equally short paths, the one whose sequence of edges
+///   comes first, in the order of [`Edge`], is reported.
+fn search(
+    resolution: &Resolution,
+    is_target: impl Fn(PackageId) -> bool,
+    kinds: &BTreeSet<PathKind>,
+    reach: Reach,
+) -> BTreeMap<PackageId, Path> {
+    let mut dependencies: BTreeMap<Node, Vec<Edge>> = BTreeMap::new();
+    // The edges are a sorted set, so each node's edges are in order too.
+    for edge in &resolution.edges {
+        dependencies.entry(edge.from).or_default().push(*edge);
+    }
+
+    // A breadth-first search over (node, path kind) states, so that a node reached by a less
+    // serious path is still searched through by a more serious one. States are expanded in the
+    // order they're found, and each node's edges followed in order, so paths are found in order
+    // of length, then of their edges. The first path found to each state is the one to keep.
+    let start = Node {
+        package: resolution.source,
+        platform: Platform::Target,
+    };
+    let mut seen: BTreeSet<(Node, PathKind)> = BTreeSet::new();
+    let mut queue: VecDeque<(Node, Option<Path>)> = VecDeque::from([(start, None)]);
+    let mut reported: BTreeMap<PackageId, Path> = BTreeMap::new();
+    while let Some((node, path)) = queue.pop_front() {
+        let first_hop = path.is_none();
+        for edge in dependencies.get(&node).into_iter().flatten() {
+            if edge.kind == EdgeKind::Dev && !first_hop {
+                continue;
+            }
+            // Anything reached through the source again is also reached from the start, by a
+            // shorter path of a kind at least as serious.
+            if edge.to.package == resolution.source {
+                continue;
+            }
+            let path = match &path {
+                None => Path {
+                    edges: vec![*edge],
+                    kind: path_kind(edge.kind),
+                },
+                Some(path) => Path {
+                    edges: [path.edges.as_slice(), &[*edge]].concat(),
+                    kind: path.kind.max(path_kind(edge.kind)),
+                },
+            };
+            if !seen.insert((edge.to, path.kind)) {
+                continue;
+            }
+            if is_target(edge.to.package) {
+                if kinds.contains(&path.kind) {
+                    report(&mut reported, edge.to.package, path);
+                }
+            } else if reach == Reach::Transitive {
+                queue.push_back((edge.to, Some(path)));
+            }
+        }
+    }
+    reported
+}
+
+/// Keeps `path` as the path reported for `target` if there's none yet, or if it's more serious
+/// than the one reported so far. [`search`] finds paths in order of length, then of their edges,
+/// so a later path of the same kind is never the one to report.
+fn report(reported: &mut BTreeMap<PackageId, Path>, target: PackageId, path: Path) {
+    match reported.entry(target) {
+        Entry::Vacant(entry) => {
+            entry.insert(path);
+        }
+        Entry::Occupied(mut entry) => {
+            if path.kind < entry.get().kind {
+                entry.insert(path);
+            }
+        }
+    }
+}
+
 /// Checks every rule, as described on [`crate::Config::check`].
 pub(crate) fn check(
     groups: &Groups,
@@ -81,8 +183,7 @@ pub(crate) fn check(
 ) -> Report {
     let violations = rules
         .iter()
-        .filter(|rule| rule.reach == Reach::Direct)
-        .flat_map(|rule| direct_violations(groups, rule, graph))
+        .flat_map(|rule| violations(groups, rule, graph))
         .collect();
     Report {
         violations,
@@ -90,10 +191,8 @@ pub(crate) fn check(
     }
 }
 
-/// The violations of a direct rule: each source member's edges to a target in `to`, of a kind
-/// in `kinds`. Ordered by source, then target.
-fn direct_violations(groups: &Groups, rule: &Rule, graph: &Graph) -> Vec<Violation> {
-    let mut violations = Vec::new();
+/// The violations of a rule, from each of its source members, ordered by source, then target.
+fn violations(groups: &Groups, rule: &Rule, graph: &Graph) -> Vec<Violation> {
     let mut resolutions: Vec<_> = graph
         .resolutions()
         .iter()
@@ -103,39 +202,30 @@ fn direct_violations(groups: &Groups, rule: &Rule, graph: &Graph) -> Vec<Violati
         .collect();
     // Package IDs are ordered by name, then version.
     resolutions.sort_by_key(|resolution| resolution.source);
+    let group_of = |target: PackageId| target_group(groups, &rule.to, graph.package(target));
+    let mut violations = Vec::new();
     for resolution in resolutions {
-        // For each target, its group and the most serious kind found so far. `PathKind` is
-        // ordered from most to least serious.
-        let mut targets: BTreeMap<PackageId, (&str, PathKind)> = BTreeMap::new();
-        for edge in &resolution.edges {
-            if edge.from.package != resolution.source {
-                continue;
-            }
-            let kind = path_kind(edge.kind);
-            if !rule.kinds.contains(&kind) {
-                continue;
-            }
-            let Some(group) = target_group(groups, &rule.to, graph.package(edge.to.package)) else {
+        let source = graph.package(resolution.source);
+        let paths = search(
+            resolution,
+            |package| group_of(package).is_some(),
+            &rule.kinds,
+            rule.reach,
+        );
+        for (target, path) in paths {
+            // Every reported target passed `group_of`.
+            let Some(group) = group_of(target) else {
                 continue;
             };
-            targets
-                .entry(edge.to.package)
-                .and_modify(|(_, found)| *found = (*found).min(kind))
-                .or_insert((group, kind));
+            violations.push(Violation {
+                rule: rule.name.clone(),
+                reason: rule.reason.clone(),
+                source: source.name.clone(),
+                target: graph.package(target).name.clone(),
+                target_group: group.to_owned(),
+                kind: path.kind,
+            });
         }
-        let source = graph.package(resolution.source);
-        violations.extend(
-            targets
-                .into_iter()
-                .map(|(target, (group, kind))| Violation {
-                    rule: rule.name.clone(),
-                    reason: rule.reason.clone(),
-                    source: source.name.clone(),
-                    target: graph.package(target).name.clone(),
-                    target_group: group.to_owned(),
-                    kind,
-                }),
-        );
     }
     violations
 }
@@ -157,7 +247,7 @@ fn target_group<'a>(groups: &Groups, to: &'a [String], package: &Package) -> Opt
         .map(String::as_str)
 }
 
-/// For a direct rule, the path is a single edge, so its kind is the edge's kind.
+/// The kind of a path made of just one edge of `kind`.
 fn path_kind(kind: EdgeKind) -> PathKind {
     match kind {
         EdgeKind::Normal => PathKind::Normal,

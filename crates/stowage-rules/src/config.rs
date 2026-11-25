@@ -255,8 +255,6 @@ impl Config {
     ///
     /// Each rule is checked from each of its source crates in turn, with all of the source's own
     /// features on, as described on [`Graph`].
-    ///
-    /// Rules with `reach = "transitive"` aren't checked yet.
     pub fn check(&self, graph: &Graph) -> Report {
         check::check(&self.groups, &self.rules, &self.warnings, graph)
     }

@@ -18,6 +18,6 @@ orders-worker ──┬──► orders-domain
 - `orders-domain` depends on nothing, so it is the bottom layer.
 - Only the test harness, `orders-tests`, depends on an entrypoint.
 - Nothing depends on the test harness.
-- Serialisation (`serde`) and SQL (`sqlx-core`) are reached only through `orders-db`.
+- Serialisation (`serde`) and SQL (`sqlx-core`, through `db-pool`) are reached only through `orders-db`, so the domain doesn't reach infrastructure, even transitively.
 
 `orders-api` and `orders-worker` have a lib target as well as a bin, because Cargo ignores a dependency on a crate with no lib target.
