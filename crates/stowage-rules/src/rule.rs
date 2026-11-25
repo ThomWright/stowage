@@ -44,7 +44,7 @@ pub(crate) struct Rule {
     /// separate, so a violation can name the group it reached.
     pub(crate) to: Vec<String>,
     pub(crate) reach: Reach,
-    /// The path kinds that count as a violation.
+    /// The kinds of path the rule forbids. Paths of other kinds are allowed.
     pub(crate) kinds: BTreeSet<PathKind>,
     /// Why the dependency is forbidden, shown with every violation.
     pub(crate) reason: String,

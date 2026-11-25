@@ -128,7 +128,7 @@ fn worked_example_catches_each_direct_violation() {
 }
 
 #[test]
-fn only_the_rules_kinds_count() {
+fn only_the_rules_kinds_are_violations() {
     let toml = r#"
         [groups]
         test-harnesses = { name = "*-tests", workspace = true }

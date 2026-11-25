@@ -64,8 +64,9 @@ impl Violation {
         &self.target_group
     }
 
-    /// The kind of the path from the source to the target. When several paths count, this is
-    /// the most serious: normal, then build, then dev.
+    /// The kind of the path from the source to the target. When the source reaches the target
+    /// by forbidden paths of several kinds, this is the most serious: normal, then build, then
+    /// dev.
     pub fn kind(&self) -> PathKind {
         self.kind
     }
