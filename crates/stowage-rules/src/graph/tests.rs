@@ -140,19 +140,27 @@ fn dependencies_on_bin_only_crates_are_ignored() {
     assert_eq!(edges(&graph, "harness"), set(&[]));
 }
 
-/// A package's (version, workspace member, has bin, proc macro).
-fn describe<'a>(graph: &'a Graph, name: &str) -> (&'a str, bool, bool, bool) {
+/// What a package in the graph says about itself, other than its name.
+#[derive(Debug, PartialEq, Eq)]
+struct Description<'a> {
+    version: &'a str,
+    workspace_member: bool,
+    has_bin: bool,
+    proc_macro: bool,
+}
+
+fn describe<'a>(graph: &'a Graph, name: &str) -> Description<'a> {
     let p = graph
         .packages()
         .iter()
         .find(|p| p.name == name)
         .expect("package exists");
-    (
-        p.version.as_str(),
-        p.workspace_member,
-        p.has_bin,
-        p.proc_macro,
-    )
+    Description {
+        version: p.version.as_str(),
+        workspace_member: p.workspace_member,
+        has_bin: p.has_bin,
+        proc_macro: p.proc_macro,
+    }
 }
 
 #[test]
@@ -160,9 +168,33 @@ fn packages_describe_membership_and_targets() {
     let kinds = fixture("kinds");
     let bin_only = fixture("bin-only");
 
-    assert_eq!(describe(&kinds, "app"), ("0.1.0", true, false, false));
-    assert_eq!(describe(&kinds, "pm"), ("0.1.0", false, false, true));
-    assert_eq!(describe(&bin_only, "tool"), ("0.1.0", true, true, false));
+    assert_eq!(
+        describe(&kinds, "app"),
+        Description {
+            version: "0.1.0",
+            workspace_member: true,
+            has_bin: false,
+            proc_macro: false,
+        }
+    );
+    assert_eq!(
+        describe(&kinds, "pm"),
+        Description {
+            version: "0.1.0",
+            workspace_member: false,
+            has_bin: false,
+            proc_macro: true,
+        }
+    );
+    assert_eq!(
+        describe(&bin_only, "tool"),
+        Description {
+            version: "0.1.0",
+            workspace_member: true,
+            has_bin: true,
+            proc_macro: false,
+        }
+    );
 }
 
 /// The (package, features) pairs reported by `cargo tree` for `member`, using the same settings
