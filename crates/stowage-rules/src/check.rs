@@ -18,7 +18,7 @@ pub struct Report {
     warnings: Vec<ConfigWarning>,
 }
 
-/// A dependency that a rule forbids: a source crate reaching a target crate.
+/// A dependency forbidden by a rule: a source crate depending on a target crate.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Violation {
     rule: String,
@@ -58,7 +58,7 @@ impl Violation {
         &self.source
     }
 
-    /// The name of the crate it reaches.
+    /// The name of the target crate, at the end of the path.
     pub fn target(&self) -> &str {
         &self.target
     }

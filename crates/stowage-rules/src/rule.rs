@@ -41,10 +41,10 @@ pub(crate) struct Rule {
     /// The source crates, which are always workspace members.
     pub(crate) from: Sources,
     /// The groups of forbidden targets: a package in any of them is forbidden. Each group is kept
-    /// separate, so a violation can name the group it reached.
+    /// separate, so a violation can name the group its target is in.
     pub(crate) to: Vec<String>,
     pub(crate) reach: Reach,
-    /// The kinds of path the rule forbids. Paths of other kinds are allowed.
+    /// The kinds of path forbidden by the rule. Paths of other kinds are allowed.
     pub(crate) kinds: BTreeSet<PathKind>,
     /// Why the dependency is forbidden, shown with every violation.
     pub(crate) reason: String,
