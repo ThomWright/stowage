@@ -1,6 +1,6 @@
 [package]
 name = "stowage-rules"
-description = "Declarative dependency rules for Cargo workspaces, checked from `cargo test`."
+description = "Declarative dependency rules for Cargo workspaces"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

@@ -204,6 +204,9 @@ fn cargo_tree(fixture_name: &str, member: &str) -> BTreeSet<String> {
         .args([
             "tree",
             "--quiet",
+            // The output is parsed, so it mustn't depend on `CARGO_TERM_COLOR` or the terminal.
+            "--color",
+            "never",
             "--locked",
             "--offline",
             "--manifest-path",
